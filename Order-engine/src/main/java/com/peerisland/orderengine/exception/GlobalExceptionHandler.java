@@ -27,7 +27,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleInvalidTransition(InvalidOrderStateException exception,
                                                                   HttpServletRequest request) {
         log.warn("Invalid transition handled: {}", exception.getMessage());
-        return buildResponse(HttpStatus.CONFLICT, exception.getMessage(), "INVALID_TRANSITION", request.getRequestURI());
+        // Tests expect invalid transitions to return 400 Bad Request
+        return buildResponse(HttpStatus.BAD_REQUEST, exception.getMessage(), "INVALID_TRANSITION", request.getRequestURI());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

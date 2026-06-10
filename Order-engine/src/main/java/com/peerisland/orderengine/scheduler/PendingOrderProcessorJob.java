@@ -17,7 +17,7 @@ public class PendingOrderProcessorJob {
 
     @Scheduled(fixedDelayString = "${order.processing.fixed-delay-ms}")
     public void processPendingOrders() {
-        List<String> processed = orderService.processPendingOrders();
+        List<String> processed = orderService.processPendingOrderIds();
         if (!processed.isEmpty()) {
             log.info("Moved {} pending orders to PROCESSING: {}", processed.size(), processed);
         }

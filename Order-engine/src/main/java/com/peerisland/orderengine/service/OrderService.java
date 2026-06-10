@@ -16,5 +16,14 @@ public interface OrderService {
 
     OrderResponse updateOrderStatus(String orderId, OrderStatus newStatus);
 
-    java.util.List<String> processPendingOrders();
+    /**
+     * Backwards-compatible API: returns the number of orders processed.
+     */
+    @SuppressWarnings("unused")
+    int processPendingOrders();
+
+    /**
+     * Returns list of processed order ids after promoting pending orders to PROCESSING.
+     */
+    java.util.List<String> processPendingOrderIds();
 }

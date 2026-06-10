@@ -101,7 +101,7 @@ public class OrderServiceImpl implements OrderService {
             @CacheEvict(value = ORDER_BY_ID_CACHE, allEntries = true),
             @CacheEvict(value = ALL_ORDERS_CACHE, allEntries = true)
     })
-    public java.util.List<String> processPendingOrders() {
+    public java.util.List<String> processPendingOrderIds() {
         java.util.List<Order> pendingOrders = orderRepository.findByStatus(OrderStatus.PENDING);
         log.debug("Processing pending orders count={}", pendingOrders.size());
         java.util.List<String> processedIds = pendingOrders.stream().map(Order::getId).toList();
@@ -111,6 +111,12 @@ public class OrderServiceImpl implements OrderService {
         });
         orderRepository.saveAll(pendingOrders);
         return processedIds;
+    }
+
+    @SuppressWarnings("unused")
+    @Override
+    public int processPendingOrders() {
+        return processPendingOrderIds().size();
     }
 
     private Order findOrder(String orderId) {
