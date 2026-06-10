@@ -1,0 +1,13 @@
+Objective: implement order lifecycle with states {PENDING, PROCESSING, COMPLETED, CANCELLED}, controlled transitions, scheduler-driven PENDING→PROCESSING, validation, caching, logging, tests, and OpenAPI.
+
+APIs: POST /orders, GET /orders[?status], GET /orders/{id}, PATCH /orders/{id}/status.
+
+Scheduler: configurable poll interval and batch size; promotes orders when scheduledProcessingAt<=now; idempotent; transactional with optimistic locking (@Version).
+
+Persistence: Spring Data JPA; H2 default. Cache: cache reads, evict on updates. Errors: return JSON with appropriate 400/404/409/500.
+
+Tests: unit (services), controller (MockMVC), integration (H2 + scheduler). Build/run/test: mvn -f Order-engine clean package; mvn -f Order-engine spring-boot:run; mvn -f Order-engine test.
+
+Config keys: app.scheduler.enabled, app.scheduler.poll-interval-seconds, app.scheduler.promotion-batch-size, app.cache.ttl-seconds.
+
+Commit trailer: Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
