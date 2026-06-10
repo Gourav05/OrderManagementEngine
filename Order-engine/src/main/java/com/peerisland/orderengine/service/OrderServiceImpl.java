@@ -101,15 +101,16 @@ public class OrderServiceImpl implements OrderService {
             @CacheEvict(value = ORDER_BY_ID_CACHE, allEntries = true),
             @CacheEvict(value = ALL_ORDERS_CACHE, allEntries = true)
     })
-    public int processPendingOrders() {
-        List<Order> pendingOrders = orderRepository.findByStatus(OrderStatus.PENDING);
+    public java.util.List<String> processPendingOrders() {
+        java.util.List<Order> pendingOrders = orderRepository.findByStatus(OrderStatus.PENDING);
         log.debug("Processing pending orders count={}", pendingOrders.size());
+        java.util.List<String> processedIds = pendingOrders.stream().map(Order::getId).toList();
         pendingOrders.forEach(order -> {
             log.info("Updating order status orderId={} from=PENDING to=PROCESSING via scheduler", order.getId());
             order.setStatus(OrderStatus.PROCESSING);
         });
         orderRepository.saveAll(pendingOrders);
-        return pendingOrders.size();
+        return processedIds;
     }
 
     private Order findOrder(String orderId) {

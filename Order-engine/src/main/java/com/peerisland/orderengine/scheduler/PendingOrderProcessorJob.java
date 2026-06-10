@@ -6,6 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
+
 @Component
 @RequiredArgsConstructor
 @Slf4j
@@ -15,9 +17,9 @@ public class PendingOrderProcessorJob {
 
     @Scheduled(fixedDelayString = "${order.processing.fixed-delay-ms}")
     public void processPendingOrders() {
-        int processed = orderService.processPendingOrders();
-        if (processed > 0) {
-            log.info("Moved {} pending orders to PROCESSING", processed);
+        List<String> processed = orderService.processPendingOrders();
+        if (!processed.isEmpty()) {
+            log.info("Moved {} pending orders to PROCESSING: {}", processed.size(), processed);
         }
     }
 }

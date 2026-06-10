@@ -16,5 +16,5 @@ public interface OrderService {
 
     OrderResponse updateOrderStatus(String orderId, OrderStatus newStatus);
 
-    int processPendingOrders();
+    java.util.List<String> processPendingOrders();
 }
