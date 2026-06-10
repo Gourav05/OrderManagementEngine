@@ -19,8 +19,9 @@ Tests
 
 Quick notes
 - The service uses an embedded H2 database by default (runtime scope). Production configuration should point to a managed database via application properties or environment variables.
-- OpenAPI UI (springdoc) is available when the app is running (look for /swagger-ui/index.html).
-- Scheduler delay and other operational settings are externalized via configuration. See src/main/resources/application*.yml for defaults.
+- OpenAPI UI (springdoc) is available when the app is running: http://localhost:8080/swagger-ui/index.html
+- H2 console is available when using embedded H2: http://localhost:8080/h2-console/
+- Scheduler delay and other operational settings are externalized via configuration. See src/main/resources/application*.properties for defaults.
 
 Agentic AI Problem Statement
 
