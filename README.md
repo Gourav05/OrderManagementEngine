@@ -53,14 +53,6 @@ Integration tests (H2 + scheduler)
 - scheduledPromotion_shouldBecomeProcessing: create order with scheduledProcessingDelaySeconds=1, wait, then GET -> status PROCESSING
 - idempotentStatusUpdate: PATCH same status twice -> both return 200 and same resource
 
-Quick curl examples
-- Create order:
-  curl -s -X POST http://localhost:8080/orders -H "Content-Type: application/json" -d '{"amount":100,"currency":"USD"}'
-  # expect 201 and "status":"PENDING"
-
-- Change status:
-  curl -s -X PATCH http://localhost:8080/orders/{id}/status -H "Content-Type: application/json" -d '{"status":"CANCELLED"}'
-  # expect 200 or 409 if transition invalid
 
 
   # API Contracts
