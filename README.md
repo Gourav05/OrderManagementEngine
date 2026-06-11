@@ -108,320 +108,129 @@ PROCESSING ------> CANCELLED
 * Updating an order to its current state is allowed.
 * Invalid state transitions return HTTP 409 Conflict.
 
----
+Create Order
+------------
+Endpoint: POST /orders
+Headers: Content-Type: application/json
 
-# Create Order
+Request body (CreateOrderRequest):
+- customerName: string (required, not blank)
+- items: array of OrderItemRequest (required, not empty)
+  - productName: string (required, not blank)
+  - quantity: integer (required, min 1)
+  - price: decimal (required, min 0.01)
 
-Creates a new order.
-
-## Endpoint
-
-```http
-POST /orders
-```
-
-## Request Headers
-
-```http
-Content-Type: application/json
-```
-
-## Request Body
-
+Example request:
 ```json
 {
-  "customerId": "CUST-1001",
-  "amount": 1499.99,
-  "currency": "INR",
-  "scheduledProcessingDelaySeconds": 60,
-  "metadata": {
-    "channel": "WEB",
-    "source": "PROMOTION"
-  }
+  "customerName": "Alice",
+  "items": [
+    { "productName": "Widget A", "quantity": 2, "price": 499.99 },
+    { "productName": "Widget B", "quantity": 1, "price": 299.50 }
+  ]
 }
 ```
 
-## Success Response
+Success (201 Created) — OrderResponse fields:
+- id: string
+- customerName: string
+- status: OrderStatus (PENDING at creation)
+- totalAmount: decimal (sum of item price*quantity)
+- createdAt: timestamp (ISO-8601)
+- items: array of OrderItemResponse
+  - id: string
+  - productName: string
+  - quantity: integer
+  - price: decimal
 
-### HTTP 201 Created
-
+Example response:
 ```json
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "customerId": "CUST-1001",
-  "amount": 1499.99,
-  "currency": "INR",
+  "customerName": "Alice",
   "status": "PENDING",
+  "totalAmount": 1299.48,
   "createdAt": "2026-06-11T10:15:30Z",
-  "updatedAt": "2026-06-11T10:15:30Z",
-  "metadata": {
-    "channel": "WEB",
-    "source": "PROMOTION"
-  }
+  "items": [
+    { "id": "it_1", "productName": "Widget A", "quantity": 2, "price": 499.99 },
+    { "id": "it_2", "productName": "Widget B", "quantity": 1, "price": 299.50 }
+  ]
 }
 ```
 
-## Validation Rules
+Validation rules (from DTO annotations)
+- customerName: @NotBlank (required)
+- items: @NotEmpty, @Valid (at least one item)
+- item.productName: @NotBlank
+- item.quantity: @NotNull, @Min(1)
+- item.price: @NotNull, @DecimalMin("0.01")
 
-| Field                           | Validation                |
-| ------------------------------- | ------------------------- |
-| amount                          | Must be greater than zero |
-| currency                        | Cannot be blank           |
-| customerId                      | Optional                  |
-| scheduledProcessingDelaySeconds | Must be positive          |
+Errors (ErrorResponse)
+All error responses use ErrorResponse:
+- timestamp: ISO-8601 instant
+- status: HTTP status code
+- error: HTTP status text
+- message: human-readable message
+- path: API path
+- code: optional machine-readable error code
 
-## Error Response
-
-### HTTP 400 Bad Request
-
+Example validation error (400):
 ```json
 {
   "timestamp": "2026-06-11T10:15:30Z",
   "status": 400,
   "error": "Bad Request",
-  "message": "Amount must be greater than zero",
-  "path": "/orders"
+  "message": "items must not be empty",
+  "path": "/orders",
+  "code": "VALIDATION_ERROR"
 }
 ```
+
+Get Order by ID
+----------------
+Endpoint: GET /orders/{orderId}
+Path parameter: orderId (string/UUID)
+
+Success (200 OK) returns OrderResponse (see fields above)
+Not found (404) returns ErrorResponse with status 404 and message "Order not found".
+
+List Orders
+-----------
+Endpoint: GET /orders
+Query parameters:
+- status: optional (filter by OrderStatus)
+- page: optional (defaults to 0)
+- size: optional (defaults to 20)
+
+Response (200 OK): paginated list with fields: content (OrderResponse[]), page, size, totalElements
+
+Update Order Status
+-------------------
+Endpoint: PATCH /orders/{orderId}/status
+Request body (UpdateOrderStatusRequest):
+```json
+{ "status": "SHIPPED" }
+```
+Allowed values: PENDING, PROCESSING, SHIPPED, DELIVERED, CANCELLED
+
+Success (200 OK): returns updated OrderResponse (or a minimal object with id, status, updatedAt)
+Invalid transition: HTTP 409 Conflict with ErrorResponse
+
+State transition rules (implemented in service layer)
+- PENDING -> PROCESSING, CANCELLED
+- PROCESSING -> SHIPPED, CANCELLED
+- SHIPPED -> DELIVERED
+- DELIVERED: terminal
+- CANCELLED: terminal
+
+Scheduler behavior
+- If scheduled promotions are implemented, they should be documented here. (Current DTOs do not include a scheduled delay field.)
+
+Developer notes
+---------------
+- DTOs live at Order-engine/src/main/java/com/peerisland/orderengine/dto
+- OrderStatus enum: com.peerisland.orderengine.domain.OrderStatus
+- Validation uses Jakarta Bean Validation annotations; controllers should annotate @Valid and return ErrorResponse on ConstraintViolationException.
+
 
 ---
-
-# Get Order By ID
-
-Retrieves an existing order.
-
-## Endpoint
-
-```http
-GET /orders/{orderId}
-```
-
-## Path Parameters
-
-| Parameter | Type |
-| --------- | ---- |
-| orderId   | UUID |
-
-## Success Response
-
-### HTTP 200 OK
-
-```json
-{
-  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "customerId": "CUST-1001",
-  "amount": 1499.99,
-  "currency": "INR",
-  "status": "PROCESSING",
-  "createdAt": "2026-06-11T10:15:30Z",
-  "updatedAt": "2026-06-11T10:16:30Z"
-}
-```
-
-## Not Found
-
-### HTTP 404 Not Found
-
-```json
-{
-  "timestamp": "2026-06-11T10:16:30Z",
-  "status": 404,
-  "error": "Not Found",
-  "message": "Order not found",
-  "path": "/orders/123"
-}
-```
-
----
-
-# Get Orders
-
-Returns all orders with optional filtering.
-
-## Endpoint
-
-```http
-GET /orders
-```
-
-## Query Parameters
-
-| Parameter | Required | Description      |
-| --------- | -------- | ---------------- |
-| status    | No       | Filter by status |
-| page      | No       | Page number      |
-| size      | No       | Page size        |
-
-### Example
-
-```http
-GET /orders?status=PENDING&page=0&size=20
-```
-
-## Success Response
-
-### HTTP 200 OK
-
-```json
-{
-  "content": [
-    {
-      "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-      "amount": 1499.99,
-      "currency": "INR",
-      "status": "PENDING"
-    }
-  ],
-  "page": 0,
-  "size": 20,
-  "totalElements": 1
-}
-```
-
----
-
-# Update Order Status
-
-Updates the status of an existing order.
-
-## Endpoint
-
-```http
-PATCH /orders/{orderId}/status
-```
-
-## Request Body
-
-```json
-{
-  "status": "SHIPPED"
-}
-```
-
-## Allowed Status Values
-
-```text
-PENDING
-PROCESSING
-SHIPPED
-DELIVERED
-CANCELLED
-```
-
-## Success Response
-
-### HTTP 200 OK
-
-```json
-{
-  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "status": "SHIPPED",
-  "updatedAt": "2026-06-11T10:25:30Z"
-}
-```
-
----
-
-# Invalid Transition Example
-
-Attempting:
-
-```text
-PENDING -> DELIVERED
-```
-
-or
-
-```text
-SHIPPED -> PROCESSING
-```
-
-returns:
-
-### HTTP 409 Conflict
-
-```json
-{
-  "timestamp": "2026-06-11T10:25:30Z",
-  "status": 409,
-  "error": "Conflict",
-  "message": "Invalid status transition from PENDING to DELIVERED",
-  "path": "/orders/3fa85f64-5717-4562-b3fc-2c963f66afa6/status"
-}
-```
-
----
-
-# State Transition Matrix
-
-| From \ To  | PENDING | PROCESSING | SHIPPED | DELIVERED | CANCELLED |
-| ---------- | ------- | ---------- | ------- | --------- | --------- |
-| PENDING    | ✓       | ✓          | ✗       | ✗         | ✓         |
-| PROCESSING | ✗       | ✓          | ✓       | ✗         | ✓         |
-| SHIPPED    | ✗       | ✗          | ✓       | ✓         | ✗         |
-| DELIVERED  | ✗       | ✗          | ✗       | ✓         | ✗         |
-| CANCELLED  | ✗       | ✗          | ✗       | ✗         | ✓         |
-
----
-
-# Scheduler Behavior
-
-Orders created with:
-
-```json
-{
-  "scheduledProcessingDelaySeconds": 60
-}
-```
-
-are automatically promoted from:
-
-```text
-PENDING → PROCESSING
-```
-
-after the configured delay.
-
----
-
-# Error Response Contract
-
-All APIs return a consistent error structure.
-
-```json
-{
-  "timestamp": "2026-06-11T10:30:00Z",
-  "status": 400,
-  "error": "Bad Request",
-  "message": "Validation failed",
-  "path": "/orders"
-}
-```
-
-| Field     | Description                |
-| --------- | -------------------------- |
-| timestamp | Error occurrence timestamp |
-| status    | HTTP status code           |
-| error     | HTTP status text           |
-| message   | Human-readable error       |
-| path      | API endpoint path          |
-
----
-
-# API Documentation
-
-Swagger UI:
-
-```http
-http://localhost:8080/swagger-ui/index.html
-```
-
-H2 Console:
-
-```http
-http://localhost:8080/h2-console
-```
-
-
-
-sts using SpringBootTest with embedded H2.
