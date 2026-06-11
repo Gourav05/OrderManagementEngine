@@ -56,6 +56,12 @@ public class Order {
     @Builder.Default
     private List<OrderItem> items = new ArrayList<>();
 
+    @Column(name = "scheduled_processing_at")
+    private Instant scheduledProcessingAt;
+
+    @jakarta.persistence.Version
+    private Long version;
+
     @PrePersist
     void prePersist() {
         if (createdAt == null) {

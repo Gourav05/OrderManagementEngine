@@ -104,12 +104,35 @@ public class OrderServiceImpl implements OrderService {
     public java.util.List<String> processPendingOrderIds() {
         java.util.List<Order> pendingOrders = orderRepository.findByStatus(OrderStatus.PENDING);
         log.debug("Processing pending orders count={}", pendingOrders.size());
-        java.util.List<String> processedIds = pendingOrders.stream().map(Order::getId).toList();
-        pendingOrders.forEach(order -> {
-            log.info("Updating order status orderId={} from=PENDING to=PROCESSING via scheduler", order.getId());
-            order.setStatus(OrderStatus.PROCESSING);
-        });
-        orderRepository.saveAll(pendingOrders);
+        java.util.List<String> processedIds = new java.util.ArrayList<>();
+
+        for (Order order : pendingOrders) {
+            boolean success = false;
+            int attempts = 0;
+            while (!success && attempts < 3) {
+                attempts++;
+                try {
+                    log.debug("Attempting to promote orderId={} attempt={}", order.getId(), attempts);
+                    order.setStatus(OrderStatus.PROCESSING);
+                    orderRepository.save(order);
+                    processedIds.add(order.getId());
+                    success = true;
+                } catch (org.springframework.dao.OptimisticLockingFailureException ex) {
+                    log.warn("Optimistic locking failure for orderId={} attempt={}", order.getId(), attempts);
+                    // reload fresh entity and retry
+                    java.util.Optional<Order> fresh = orderRepository.findById(order.getId());
+                    if (fresh.isPresent()) {
+                        order = fresh.get();
+                    } else {
+                        // order disappeared, stop retrying
+                        break;
+                    }
+                }
+            }
+            if (!success) {
+                log.error("Failed to promote orderId={} after {} attempts", order.getId(), 3);
+            }
+        }
         return processedIds;
     }
 
