@@ -73,32 +73,46 @@ http://localhost:8080
 
 ---
 
-# Order Lifecycle
+# Order Status Lifecycle
 
 ```text
- PENDING
+PENDING
    |
    v
-  PROCESSING
-  /          \
- v            v
-COMPLETED  CANCELLED
+PROCESSING
+   |
+   v
+SHIPPED
+   |
+   v
+DELIVERED
+
+PENDING ---------> CANCELLED
+PROCESSING ------> CANCELLED
 ```
 
-Valid transitions:
+## State Transition Rules
 
 | Current Status | Allowed Next Status   |
 | -------------- | --------------------- |
 | PENDING        | PROCESSING, CANCELLED |
-| PROCESSING     | COMPLETED, CANCELLED  |
-| COMPLETED      | Not Allowed           |
-| CANCELLED      | Not Allowed           |
+| PROCESSING     | SHIPPED, CANCELLED    |
+| SHIPPED        | DELIVERED             |
+| DELIVERED      | None                  |
+| CANCELLED      | None                  |
+
+### Notes
+
+* Every order is created in `PENDING` state.
+* `DELIVERED` and `CANCELLED` are terminal states.
+* Updating an order to its current state is allowed.
+* Invalid state transitions return HTTP 409 Conflict.
 
 ---
 
-# 1. Create Order
+# Create Order
 
-Creates a new order in `PENDING` status.
+Creates a new order.
 
 ## Endpoint
 
@@ -116,25 +130,16 @@ Content-Type: application/json
 
 ```json
 {
-  "customerId": "8b43b5c0-16cb-4c4e-a706-0f8d59f1a1a9",
-  "amount": 100.50,
-  "currency": "USD",
+  "customerId": "CUST-1001",
+  "amount": 1499.99,
+  "currency": "INR",
+  "scheduledProcessingDelaySeconds": 60,
   "metadata": {
-    "source": "WEB",
-    "channel": "MOBILE"
-  },
-  "scheduledProcessingDelaySeconds": 60
+    "channel": "WEB",
+    "source": "PROMOTION"
+  }
 }
 ```
-
-## Validation Rules
-
-| Field                           | Required | Validation             |
-| ------------------------------- | -------- | ---------------------- |
-| amount                          | Yes      | Must be greater than 0 |
-| currency                        | Yes      | Cannot be blank        |
-| customerId                      | No       | Valid UUID             |
-| scheduledProcessingDelaySeconds | No       | Positive integer       |
 
 ## Success Response
 
@@ -143,51 +148,59 @@ Content-Type: application/json
 ```json
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "customerId": "8b43b5c0-16cb-4c4e-a706-0f8d59f1a1a9",
-  "amount": 100.50,
-  "currency": "USD",
+  "customerId": "CUST-1001",
+  "amount": 1499.99,
+  "currency": "INR",
   "status": "PENDING",
-  "createdAt": "2026-06-11T12:00:00Z",
-  "updatedAt": "2026-06-11T12:00:00Z",
+  "createdAt": "2026-06-11T10:15:30Z",
+  "updatedAt": "2026-06-11T10:15:30Z",
   "metadata": {
-    "source": "WEB",
-    "channel": "MOBILE"
+    "channel": "WEB",
+    "source": "PROMOTION"
   }
 }
 ```
 
-## Error Responses
+## Validation Rules
+
+| Field                           | Validation                |
+| ------------------------------- | ------------------------- |
+| amount                          | Must be greater than zero |
+| currency                        | Cannot be blank           |
+| customerId                      | Optional                  |
+| scheduledProcessingDelaySeconds | Must be positive          |
+
+## Error Response
 
 ### HTTP 400 Bad Request
 
 ```json
 {
-  "timestamp": "2026-06-11T12:00:00Z",
+  "timestamp": "2026-06-11T10:15:30Z",
   "status": 400,
   "error": "Bad Request",
   "message": "Amount must be greater than zero",
-  "path": "/orders",
-  "code": "VALIDATION_ERROR"
+  "path": "/orders"
 }
 ```
 
 ---
 
-# 2. Get Order By ID
+# Get Order By ID
 
-Fetches a specific order.
+Retrieves an existing order.
 
 ## Endpoint
 
 ```http
-GET /orders/{id}
+GET /orders/{orderId}
 ```
 
 ## Path Parameters
 
 | Parameter | Type |
 | --------- | ---- |
-| id        | UUID |
+| orderId   | UUID |
 
 ## Success Response
 
@@ -196,12 +209,12 @@ GET /orders/{id}
 ```json
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "customerId": "8b43b5c0-16cb-4c4e-a706-0f8d59f1a1a9",
-  "amount": 100.50,
-  "currency": "USD",
+  "customerId": "CUST-1001",
+  "amount": 1499.99,
+  "currency": "INR",
   "status": "PROCESSING",
-  "createdAt": "2026-06-11T12:00:00Z",
-  "updatedAt": "2026-06-11T12:05:00Z"
+  "createdAt": "2026-06-11T10:15:30Z",
+  "updatedAt": "2026-06-11T10:16:30Z"
 }
 ```
 
@@ -211,20 +224,19 @@ GET /orders/{id}
 
 ```json
 {
-  "timestamp": "2026-06-11T12:00:00Z",
+  "timestamp": "2026-06-11T10:16:30Z",
   "status": 404,
   "error": "Not Found",
   "message": "Order not found",
-  "path": "/orders/123",
-  "code": "ORDER_NOT_FOUND"
+  "path": "/orders/123"
 }
 ```
 
 ---
 
-# 3. Get Orders
+# Get Orders
 
-Returns paginated orders.
+Returns all orders with optional filtering.
 
 ## Endpoint
 
@@ -234,11 +246,11 @@ GET /orders
 
 ## Query Parameters
 
-| Parameter | Required | Description            |
-| --------- | -------- | ---------------------- |
-| status    | No       | Filter by order status |
-| page      | No       | Page number            |
-| size      | No       | Page size              |
+| Parameter | Required | Description      |
+| --------- | -------- | ---------------- |
+| status    | No       | Filter by status |
+| page      | No       | Page number      |
+| size      | No       | Page size        |
 
 ### Example
 
@@ -255,8 +267,8 @@ GET /orders?status=PENDING&page=0&size=20
   "content": [
     {
       "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-      "amount": 100.50,
-      "currency": "USD",
+      "amount": 1499.99,
+      "currency": "INR",
       "status": "PENDING"
     }
   ],
@@ -268,21 +280,21 @@ GET /orders?status=PENDING&page=0&size=20
 
 ---
 
-# 4. Update Order Status
+# Update Order Status
 
-Updates the current order status.
+Updates the status of an existing order.
 
 ## Endpoint
 
 ```http
-PATCH /orders/{id}/status
+PATCH /orders/{orderId}/status
 ```
 
 ## Request Body
 
 ```json
 {
-  "status": "COMPLETED"
+  "status": "SHIPPED"
 }
 ```
 
@@ -291,7 +303,8 @@ PATCH /orders/{id}/status
 ```text
 PENDING
 PROCESSING
-COMPLETED
+SHIPPED
+DELIVERED
 CANCELLED
 ```
 
@@ -302,55 +315,56 @@ CANCELLED
 ```json
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "status": "COMPLETED",
-  "updatedAt": "2026-06-11T12:10:00Z"
+  "status": "SHIPPED",
+  "updatedAt": "2026-06-11T10:25:30Z"
 }
 ```
 
-## Invalid Transition
+---
+
+# Invalid Transition Example
+
+Attempting:
+
+```text
+PENDING -> DELIVERED
+```
+
+or
+
+```text
+SHIPPED -> PROCESSING
+```
+
+returns:
 
 ### HTTP 409 Conflict
 
 ```json
 {
-  "timestamp": "2026-06-11T12:10:00Z",
+  "timestamp": "2026-06-11T10:25:30Z",
   "status": 409,
   "error": "Conflict",
-  "message": "Cannot transition COMPLETED -> PENDING",
-  "path": "/orders/3fa85f64/status",
-  "code": "INVALID_TRANSITION"
+  "message": "Invalid status transition from PENDING to DELIVERED",
+  "path": "/orders/3fa85f64-5717-4562-b3fc-2c963f66afa6/status"
 }
 ```
 
 ---
 
-# Common Error Response
+# State Transition Matrix
 
-All API errors follow the same schema.
-
-```json
-{
-  "timestamp": "2026-06-11T12:00:00Z",
-  "status": 400,
-  "error": "Bad Request",
-  "message": "Validation failed",
-  "path": "/orders",
-  "code": "VALIDATION_ERROR"
-}
-```
-
-| Field     | Description            |
-| --------- | ---------------------- |
-| timestamp | Error occurrence time  |
-| status    | HTTP status code       |
-| error     | HTTP status text       |
-| message   | Human-readable message |
-| path      | API path               |
-| code      | Application error code |
+| From \ To  | PENDING | PROCESSING | SHIPPED | DELIVERED | CANCELLED |
+| ---------- | ------- | ---------- | ------- | --------- | --------- |
+| PENDING    | ✓       | ✓          | ✗       | ✗         | ✓         |
+| PROCESSING | ✗       | ✓          | ✓       | ✗         | ✓         |
+| SHIPPED    | ✗       | ✗          | ✓       | ✓         | ✗         |
+| DELIVERED  | ✗       | ✗          | ✗       | ✓         | ✗         |
+| CANCELLED  | ✗       | ✗          | ✗       | ✗         | ✓         |
 
 ---
 
-# Scheduler Behaviour
+# Scheduler Behavior
 
 Orders created with:
 
@@ -360,7 +374,7 @@ Orders created with:
 }
 ```
 
-are automatically promoted:
+are automatically promoted from:
 
 ```text
 PENDING → PROCESSING
@@ -370,7 +384,31 @@ after the configured delay.
 
 ---
 
-# OpenAPI Documentation
+# Error Response Contract
+
+All APIs return a consistent error structure.
+
+```json
+{
+  "timestamp": "2026-06-11T10:30:00Z",
+  "status": 400,
+  "error": "Bad Request",
+  "message": "Validation failed",
+  "path": "/orders"
+}
+```
+
+| Field     | Description                |
+| --------- | -------------------------- |
+| timestamp | Error occurrence timestamp |
+| status    | HTTP status code           |
+| error     | HTTP status text           |
+| message   | Human-readable error       |
+| path      | API endpoint path          |
+
+---
+
+# API Documentation
 
 Swagger UI:
 
@@ -385,4 +423,5 @@ http://localhost:8080/h2-console
 ```
 
 
-Add these tests under src/test/java: unit tests for services, MockMvc controller tests, and integration tests using SpringBootTest with embedded H2.
+
+sts using SpringBootTest with embedded H2.
